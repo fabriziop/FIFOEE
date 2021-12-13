@@ -1,0 +1,26 @@
+#######################################
+# Syntax Coloring Map For FIFOEE
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+FIFOEE	KEYWORD1
+
+#######################################
+# Methods and Functions	(KEYWORD2)
+#######################################
+
+format	KEYWORD2
+begin	KEYWORD2
+push	KEYWORD2
+pop	KEYWORD2
+read	KEYWORD2
+restartRead	KEYWORD2
+dumpControl	KEYWORD2
+dumpBuffer	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
