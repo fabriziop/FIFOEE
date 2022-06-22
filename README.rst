@@ -39,7 +39,8 @@ Features
 * Low EEPROM data overhead: 1 byte for each data block plus one byte
 * Designed to minimize EEPROM wearing
 * Works also with RAM with the same API
-* Tested on Arduino nano (AVR 328p) and on NodeMCU (ESP8266)
+* Supports AVR328p, ESP8266, ESP32 processors.
+* Tested on arduino nano, nodeMCU 8266, nodeMCU 32S boards.
 
 
 Quick start
@@ -237,8 +238,8 @@ stored really into the flash memory only upon request by calling the
 **commit** method.
 
 To control the frequency of data committing into flash memory, FIFOEE allows
-to set a **COMMIT_PERIOD** argument that specifies the minimum time
-period between two consecutive commits. **COMMIT_PERIOD** is expressed in 
+to set a **commitPeriod** argument that specifies the minimum time
+period between two consecutive commits. **commitPeriod** is expressed in 
 milliseconds. A zero value disables committing.
 
 
@@ -389,7 +390,7 @@ Copyright
 =========
 
 FIFOEE library is authored by Fabrizio Pollastri <mxgbot_a_t_gmail.com>,
-year 2021, under the GNU Lesser General Public License version 3.
+years 2021-2022, under the GNU Lesser General Public License version 3.
 
 
 .. _DEVINFO: doc/developer.rst

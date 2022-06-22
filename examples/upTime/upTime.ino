@@ -29,7 +29,7 @@
 // define ring buffer
 #ifdef __AVR__
   FIFOEE rFIFOEE((uint8_t *)BUFFER_START_ADDR,BUFFER_SIZE);
-#elif ESP8266
+#elif defined(ESP8266) || defined(ESP32)
   FIFOEE rFIFOEE((uint8_t *)BUFFER_START_ADDR,BUFFER_SIZE,COMMIT_PERIOD);
 #else
   #error ERROR: unsupported architecture.

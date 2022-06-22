@@ -6,7 +6,7 @@
 .author     : Fabrizio Pollastri <mxgbot@gmail.com>
 .site       : Revello - Italy
 .creation   : 28-Sep-2021
-.copyright  : (c) 2021 Fabrizio Pollastri
+.copyright  : (c) 2022 Fabrizio Pollastri
 .license    : GNU Lesser General Public License
 
 .description
@@ -16,6 +16,7 @@
 .compile_options
   1. debugging printout methods, to include them define symbol FIFOEE_DEBUG.
   2. use RAM instead of EEPROM, to activate define symbol FIFOEE_RAM.
+  Both options must be defined before including fifoee.h .
 
 .- */
 
@@ -31,13 +32,17 @@
 #else
   #ifdef __AVR__
     #define EE_WRITE( addr , val ) (EEPROM[ (int)( addr )  ].update( val ))
-  #elif ESP8266
+  #elif defined(ESP8266) || defined(ESP32)
     #define EE_WRITE( addr , val ) (EEPROM.write((int)( addr ),( val )))
   #else
     #error ERROR: unsupported architecture 
   #endif
-  #define EE_READ( addr ) (EEPROM[(int)( addr )])
-  #include <EEPROM.h>
+  #ifdef ESP32
+    #define EE_READ( addr ) (EEPROM.read((int)( addr )))
+  #else
+    #define EE_READ( addr ) (EEPROM[(int)( addr )])
+  #endif
+  #include "EEPROM.h"
 #endif
 
 
@@ -71,9 +76,9 @@ struct FIFOEE {
   static const size_t BLOCK_SIZE_BITS = 0x3f;
 
   // block status codes
-  static const size_t FREE_BLOCK = 0xc0;  // never pushed or pushed and then popped
-  static const size_t NEW_BLOCK = 0x40;   // pushed and not yet read or popped
-  static const size_t READ_BLOCK = 0x00;  // pushed, read at least once and not popped
+  static const size_t FREE_BLOCK = 0xc0;//never pushed or pushed and then popped
+  static const size_t NEW_BLOCK = 0x40; //pushed and not yet read or popped
+  static const size_t READ_BLOCK = 0x00;//read at least once and not popped
 
 
   /**** class control vars ****/
@@ -93,14 +98,14 @@ struct FIFOEE {
   uint8_t *pPop;
   uint8_t *pRead;
 
-  #if defined ESP8266 && !defined FIFOEE_RAM
+  #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
   uint32_t nextCommit = 0;
   uint32_t commitPeriod;
   bool noEepromBegin = true;
   #endif
 
   #ifdef FIFOEE_RAM
-    uint8_t *buffer;
+  uint8_t *buffer;
   #endif
 
 
@@ -108,7 +113,7 @@ struct FIFOEE {
 
   public:
 
-  #if defined ESP8266
+  #if defined(ESP8266) || defined(ESP32)
   FIFOEE(uint8_t *aBuffer,size_t aBufSize,uint32_t aCommitPeriod) {
   #else
   FIFOEE(uint8_t *aBuffer,size_t aBufSize) {
@@ -116,7 +121,8 @@ struct FIFOEE {
   /* class constructor
    * aBuffer: FIFO buffer start address, area for control var and ring buffer.
    * aBufSize: buffer size (bytes).
-   * aCommitPeriod: (ESP8266 only) real write to EEPROM happens every period.
+   * aCommitPeriod: (ESP8266 and ESP32 only) real write to EEPROM happens every
+   *   period.
    */
 
     #ifdef FIFOEE_RAM
@@ -129,7 +135,7 @@ struct FIFOEE {
     pRBufStart = aBuffer + 1;
     pRBufEnd = pRBufStart + RBufSize;
 
-    #if defined ESP8266 && !defined FIFOEE_RAM
+    #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitPeriod = aCommitPeriod;
     nextCommit = millis() + commitPeriod;
     #endif
@@ -144,9 +150,17 @@ struct FIFOEE {
    * a proper size to fill all ring buffer.
    */
 
-    #if defined ESP8266 && !defined FIFOEE_RAM
+    #if !defined(FIFOEE_RAM) && !defined(__AVR__)
     if (noEepromBegin) {
+      #if defined ESP8266
       EEPROM.begin((size_t)pRBufStart + RBufSize);
+      #elif defined(ESP32)
+      if (!EEPROM.begin((size_t)pRBufStart + RBufSize)) {
+        Serial.println("ERROR: EEPROM init failure");
+        while(true) delay(1000);
+      }
+      delay(500);
+      #endif
       noEepromBegin = false;
     }
     #endif
@@ -187,6 +201,11 @@ struct FIFOEE {
     // fill residual space with a last block of proper size
     EE_WRITE(pBlock,FREE_BLOCK | sizeToFill - 2);
 
+    #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
+    EEPROM.commit();
+    nextCommit = millis() + commitPeriod;
+    #endif
+
   }
 
 
@@ -196,9 +215,17 @@ struct FIFOEE {
    * return an error code.
    */
 
-    #if defined ESP8266 && !defined FIFOEE_RAM
+    #if !defined(FIFOEE_RAM) && !defined(__AVR__)
     if (noEepromBegin) {
+      #if defined ESP8266
       EEPROM.begin((size_t)pRBufStart + RBufSize);
+      #elif defined(ESP32)
+      if (!EEPROM.begin((size_t)pRBufStart + RBufSize)) {
+        Serial.println("ERROR: EEPROM init failure");
+        while(true) delay(1000);
+      }
+      delay(500);
+      #endif
       noEepromBegin = false;
     }
     #endif
@@ -355,7 +382,7 @@ struct FIFOEE {
     // ran out what remains of the allocated block creating a free block
     EE_WRITE(pPush,FREE_BLOCK | blockSize - size - 3);
 
-    #if defined ESP8266 && !defined FIFOEE_RAM
+    #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitRequest();
     #endif
 
@@ -384,7 +411,7 @@ struct FIFOEE {
     // mark block just read as deleted
     EE_WRITE(pPop,FREE_BLOCK | *size - 1);
 
-    #if defined ESP8266 && !defined FIFOEE_RAM
+    #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitRequest();
     #endif
 
@@ -419,7 +446,7 @@ struct FIFOEE {
     // mark block just read as read
     EE_WRITE(pRead,READ_BLOCK | *size - 1);
 
-    #if defined ESP8266 && !defined FIFOEE_RAM
+    #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitRequest();
     #endif
 
@@ -497,7 +524,7 @@ struct FIFOEE {
   }
 
 
-  #if defined ESP8266 && !defined FIFOEE_RAM
+  #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
   void commitRequest(void) {
   /* commit changes to EEPROM not more frequently than a given period
    */
