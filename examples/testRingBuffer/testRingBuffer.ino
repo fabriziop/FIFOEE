@@ -6,7 +6,7 @@
 .author     : Fabrizio Pollastri <mxgbot@gmail.com>
 .site       : Revello - Italy
 .creation   : 6-Oct-2021
-.copyright  : (c) 2021 Fabrizio Pollastri
+.copyright  : (c) 2021-2022 Fabrizio Pollastri
 .license    : GNU Lesser General Public License
 
 .description
@@ -27,15 +27,15 @@
 #define TEST_CYCLES 1000
 #define BUFFER_START_ADDR  (int)0x10
 #define BUFFER_SIZE 258      // make ring buffer size a prime number (257)
-#define MAX_DATA_SIZE 20
-#define BLOCK_SEQ_LEN_MAX 10 // max number of data block written to buffer
+#define MAX_DATA_SIZE 127
+#define BLOCK_SEQ_LEN_MAX 20 // max number of data block written to buffer
 #define COMMIT_PERIOD 0      // never commit
 
 #include <fifoee.h>
 
 
 // a single data block
-uint8_t data[FIFOEE::DATA_SIZE_MAX];
+uint8_t data[FIFOEE_DATA_SIZE_MAX];
 
 // random parameters for test data
 size_t dataSize;
@@ -97,8 +97,11 @@ void loop()
 {
   
   // data payload generator, checker
-  uint8_t pushData = 0;
-  uint8_t popData = 0;
+  uint8_t pushData = 1;
+  uint8_t pushDataStart = 1;
+  uint8_t readData = 1;
+  uint8_t popData = 1;
+  uint8_t popDataStart = 1;
   
   // repeat the test, each time changing data
   
@@ -114,15 +117,16 @@ void loop()
 
       // generate data payload: unsigned 8 bit integer numbering sequence
       size_t dataSize = rand() % MAX_DATA_SIZE + 1;
+      pushDataStart = pushData;
       for (int i=0; i < dataSize; i++)
-        data[i] = (uint8_t)(pushData++ + dataSize);
+        data[i] = (uint8_t)(pushData++);
 
       // push generated data into FIFO and check for errors
       error = rFIFOEE.push(data,dataSize);
       
       if (error) {
         if (error == FIFOEE::FIFO_FULL) {
-          pushData -= dataSize;
+          pushData = pushDataStart;
           break;
         }
         snprintf(line,sizeof(line),
@@ -135,23 +139,12 @@ void loop()
 
     }
 
-    // call begin FIFO again, if all is ok, nothing changes.
-    error = rFIFOEE.begin();
-    if (error) {
-      snprintf(line,sizeof(line),"ERROR #%d rebeginning FIFO. cycle = %d",
-        error,k);
-      Serial.println(line);
-      errCount++;
-      rFIFOEE.dumpControl();
-      rFIFOEE.dumpBuffer();
-    }
-
-    // read a random number of blocks from FIFO
+    // read all pushed blocks
     blockSeqLen <<= 1;
     for (int j=0; j < blockSeqLen; j++) {
 
       // read a block of data and check for errors
-      dataSize = FIFOEE::DATA_SIZE_MAX;
+      dataSize = FIFOEE_DATA_SIZE_MAX;
       error = rFIFOEE.read(data,&dataSize);
       if (error) {
         if (error == FIFOEE::FIFO_EMPTY)
@@ -165,12 +158,11 @@ void loop()
       }
 
       // check read data for correct sequence
-      uint8_t firstValue = data[0];
-      for (size_t i=1; i < dataSize; i++) {
-        if (data[i] == ++firstValue)
+      for (size_t i=0; i < dataSize; i++) {
+        if (data[i] == readData++)
           continue;
         snprintf(line,sizeof(line),"Read error. cycle = %d, block/byte ="
-          " %d/%d, pushData = %x, readData = %x",k,j,i,firstValue,data[i]);
+          " %d/%d, pushData = %x, readData = %x",k,j,i,readData,data[i]);
         Serial.println(line);
         errCount++;
       }
@@ -183,7 +175,7 @@ void loop()
     for (int j=0; j < blockSeqLen; j++) {
 
       // pop a block of data and check for errors
-      dataSize = FIFOEE::DATA_SIZE_MAX;
+      dataSize = FIFOEE_DATA_SIZE_MAX;
       error = rFIFOEE.pop(data,&dataSize);
       if (error) {
         if (error == FIFOEE::FIFO_EMPTY)
@@ -198,7 +190,7 @@ void loop()
 
       // compare pushed data with popped data
       for (size_t i=0; i < dataSize; i++) {
-        if (data[i] == (uint8_t)(popData++ + dataSize))
+        if (data[i] == (uint8_t)(popData++))
           continue;
         snprintf(line,sizeof(line),"Pop error. cycle = %d, block/byte = %d/%di"
           ", pushData = %x, popData = %x",k,j,i,popData - 1,data[i]);
@@ -207,12 +199,15 @@ void loop()
       }
     }
 
+    // keep software WDT quiet
+    delay(1);
+
   }
 
   if (errCount)
-    snprintf(line,sizeof(line),"\nTEST FAIL: %d errors",errCount);
+    snprintf(line,sizeof(line),"TEST FAIL: %d errors",errCount);
   else
-    snprintf(line,sizeof(line),"\nTEST OK");
+    snprintf(line,sizeof(line),"TEST OK");
   Serial.println(line);
     
   // stop here

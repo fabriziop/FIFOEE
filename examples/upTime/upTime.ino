@@ -22,7 +22,7 @@
 #define BUFFER_START_ADDR  (int)0x200
 #define BUFFER_SIZE 258      // make ring buffer size a prime number (257)
 #define FIFO_WRITE_PERIOD 6  // write current time to FIFO every 60 seconds
-#define COMMIT_PERIOD 55     // comit every 55 milliseconds
+#define COMMIT_PERIOD 55     // commit every 55 milliseconds
 
 #include <fifoee.h>
 

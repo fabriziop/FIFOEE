@@ -6,7 +6,7 @@
 .author     : Fabrizio Pollastri <mxgbot@gmail.com>
 .site       : Revello - Italy
 .creation   : 28-Sep-2021
-.copyright  : (c) 2022 Fabrizio Pollastri
+.copyright  : (c) 2021-2022 Fabrizio Pollastri
 .license    : GNU Lesser General Public License
 
 .description
@@ -22,6 +22,21 @@
 
 #ifndef FIFOEE_H
 #define FIFOEE_H
+
+
+/**** constants ****/
+
+#define BUFFER_SIZE_MIN 5
+#define FIFOEE_DATA_SIZE_MAX 127
+#define BLOCK_SIZE_MAX FIFOEE_DATA_SIZE_MAX + 1
+
+// block status codes
+#define FREE_BLOCK 0x80          // never pushed or pushed and then popped
+#define USED_BLOCK 0x00          // pushed and not yet popped
+
+// block header masks
+#define BLOCK_STATUS_BIT 0x80
+#define BLOCK_SIZE_BITS 0x7f
 
 
 /**** macros ****/
@@ -54,43 +69,32 @@ struct FIFOEE {
 
   public:
 
-  static const size_t DATA_SIZE_MAX = 64;
-
   enum returnStatus: uint8_t {
 
     SUCCESS = 0,
     FIFO_EMPTY,
     FIFO_FULL,
+    INVALID_FIFO_BUFFER_SIZE,
+    INVALID_BLOCK_HEADER,
     DATA_BUFFER_SMALL,
     PUSH_BLOCK_NOT_FREE,
-    INVALID_BLOCK_STATUS,
-    INVALID_BLOCK_STATUS_CHANGE
+    UNCLOSED_BLOCK_LIST,
+    WRONG_RBUFFER_SIZE
 
   };
 
-
   private:
-
-  static const size_t BLOCK_SIZE_MAX = DATA_SIZE_MAX + 1;
-  static const size_t BLOCK_STATUS_BITS = 0xc0;
-  static const size_t BLOCK_SIZE_BITS = 0x3f;
-
-  // block status codes
-  static const size_t FREE_BLOCK = 0xc0;//never pushed or pushed and then popped
-  static const size_t NEW_BLOCK = 0x40; //pushed and not yet read or popped
-  static const size_t READ_BLOCK = 0x00;//read at least once and not popped
-
 
   /**** class control vars ****/
 
   uint8_t *pBlock;
   uint8_t blockHeader;
   uint8_t blockStatus;
-  uint8_t blockSize;
-
+  size_t blockSize;
+  uint8_t *pBotBlock;
   uint8_t *pBotBlockOffset;
   size_t size;
-  size_t RBufSize;
+  size_t rBufSize;
   uint8_t *pRBufStart;
   uint8_t *pRBufEnd;
 
@@ -101,7 +105,7 @@ struct FIFOEE {
   #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
   uint32_t nextCommit = 0;
   uint32_t commitPeriod;
-  bool noEepromBegin = true;
+  bool eepromBegin = true;
   #endif
 
   #ifdef FIFOEE_RAM
@@ -131,9 +135,9 @@ struct FIFOEE {
 
     // allocate and init control vars
     pBotBlockOffset = aBuffer;
-    RBufSize = aBufSize - 1;
+    rBufSize = aBufSize - 1;
     pRBufStart = aBuffer + 1;
-    pRBufEnd = pRBufStart + RBufSize;
+    pRBufEnd = pRBufStart + rBufSize;
 
     #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitPeriod = aCommitPeriod;
@@ -143,25 +147,30 @@ struct FIFOEE {
   }
 
 
-  void format(void) {
+  int format(void) {
   /* format essential metadata of ring buffer, buffer is logically cleared.
    * Fill the ring buffer with a chain of forward linked free blocks with
-   * a prefixed data size of DATA_SIZE_MAX and one or two final blocks with
+   * a prefixed data size of FIFOEE_DATA_SIZE_MAX and a final block with
    * a proper size to fill all ring buffer.
    */
 
+    // check for valid buffer size: minimum size 5 bytes, a FIFO of one block
+    // of one byte of data (not very useful :).
+    if (rBufSize < BUFFER_SIZE_MIN - 1)
+      return INVALID_FIFO_BUFFER_SIZE;
+
     #if !defined(FIFOEE_RAM) && !defined(__AVR__)
-    if (noEepromBegin) {
+    if (eepromBegin) {
       #if defined ESP8266
-      EEPROM.begin((size_t)pRBufStart + RBufSize);
+      EEPROM.begin((size_t)pRBufStart + rBufSize);
       #elif defined(ESP32)
-      if (!EEPROM.begin((size_t)pRBufStart + RBufSize)) {
+      if (!EEPROM.begin((size_t)pRBufStart + rBufSize)) {
         Serial.println("ERROR: EEPROM init failure");
-        while(true) delay(1000);
+        while (true) delay(1000);
       }
       delay(500);
       #endif
-      noEepromBegin = false;
+      eepromBegin = false;
     }
     #endif
 
@@ -176,30 +185,19 @@ struct FIFOEE {
     // insert the highest allowed number of free blocks with BLOCK_DATA_SIZE_MAX
     // byte fixed data size into the ring buffer 
     // fill all the remaining space with appropriately sized blocks
-    size_t sizeToFill = RBufSize;
+    size_t sizeToFill = rBufSize;
     pBlock = pRBufStart;
 
-    while(sizeToFill >= BLOCK_SIZE_MAX) {
+    while (sizeToFill > BLOCK_SIZE_MAX) {
 
+      EE_WRITE(pBlock,FREE_BLOCK | FIFOEE_DATA_SIZE_MAX);
+      pBlock += BLOCK_SIZE_MAX;
       sizeToFill -= BLOCK_SIZE_MAX;
-
-      // adjust for residual space of only one byte: reduce block size by 1
-      // to increase residual space to 2 byte, the required minimun.
-      size_t dataSize;
-      if (sizeToFill == 1) {
-	sizeToFill++;
-	dataSize = DATA_SIZE_MAX - 1;
-      }
-      else
-	dataSize = DATA_SIZE_MAX;
-
-      EE_WRITE(pBlock,FREE_BLOCK | dataSize - 1);
-      pBlock += dataSize + 1;
 
     }
 
-    // fill residual space with a last block of proper size
-    EE_WRITE(pBlock,FREE_BLOCK | sizeToFill - 2);
+    // set residual space
+    EE_WRITE(pBlock,FREE_BLOCK | sizeToFill - 1);
 
     #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     EEPROM.commit();
@@ -210,93 +208,97 @@ struct FIFOEE {
 
 
   int begin(void) {
-  /* check if the ring buffer contains a valid data structure. If yes,
-   * scan it and gather all relevant data for its management. If not,
+  /* Scan the ring buffer for a valid data structure. If yes,
+   * gather all relevant data for its management. If not,
    * return an error code.
    */
 
     #if !defined(FIFOEE_RAM) && !defined(__AVR__)
-    if (noEepromBegin) {
+    if (eepromBegin) {
       #if defined ESP8266
-      EEPROM.begin((size_t)pRBufStart + RBufSize);
+      EEPROM.begin((size_t)pRBufStart + rBufSize);
       #elif defined(ESP32)
-      if (!EEPROM.begin((size_t)pRBufStart + RBufSize)) {
+      if (!EEPROM.begin((size_t)pRBufStart + rBufSize)) {
         Serial.println("ERROR: EEPROM init failure");
-        while(true) delay(1000);
+        while (true) delay(1000);
       }
       delay(500);
       #endif
-      noEepromBegin = false;
+      eepromBegin = false;
     }
     #endif
 
     // scan the blocks sequence in the ring buffer for changes of status
     // to find the position of pointers pPush, pPop, pRead.
-    pBlock = pRBufStart + EE_READ(pBotBlockOffset);
-    blockHeader = EE_READ(pBlock);
+    pBotBlock = pRBufStart + EE_READ(pBotBlockOffset);
+    blockHeader = EE_READ(pBotBlock);
 
-    // check for valid block status
-    blockStatus = blockHeader & BLOCK_STATUS_BITS;
-    if (blockStatus == 0x80)
-      return INVALID_BLOCK_STATUS;
+    // check for invalid header (0x00: used block cannot have zero size)
+    if (!blockHeader)
+      return INVALID_BLOCK_HEADER;
 
     // init pointers and control variables for an empty ring buffer
+    pBlock = pBotBlock;
     pPush = pBlock;
     pPop = pBlock;
     pRead = pBlock;
 
-    // scan blocks into ring buffer
-    uint8_t oldChangeStatus = blockStatus;
+    // scan blocks into ring buffer for change of status and block size
+    blockStatus = blockHeader & BLOCK_STATUS_BIT;
+    uint8_t oldStatus = blockStatus;
+    size_t detectedRBufSize = (blockHeader & BLOCK_SIZE_BITS) + 1;
     while (1) {
 
       // point to next block
-      pBlock += (blockHeader & BLOCK_SIZE_BITS) + 2;
+      pBlock += (blockHeader & BLOCK_SIZE_BITS) + 1;
 
       // if end of block chain (reached the ring buffer end) ...
-      if (pBlock >= pRBufEnd)
-	return SUCCESS;
+      if (pBlock >= pRBufEnd) {
+	
+	// check if block linked list closes over itself: topmost block
+	// must link to bottommost block.
+	if (pBotBlock != pBlock - rBufSize)
+	  return UNCLOSED_BLOCK_LIST;
+
+        // check if block sizes summation == given ring buffer size
+	if (rBufSize != detectedRBufSize)
+	  return WRONG_RBUFFER_SIZE;
+
+	break;
+      }
 
       // get next block status and check it for validity
       blockHeader = EE_READ(pBlock);
-      blockStatus = blockHeader & BLOCK_STATUS_BITS;
-      if (blockStatus == 0x80)
-        return INVALID_BLOCK_STATUS;
+      if (!blockHeader)
+        return INVALID_BLOCK_HEADER;
+
+      blockStatus = blockHeader & BLOCK_STATUS_BIT;
+
+      // accumulate block sizes
+      detectedRBufSize += (blockHeader & BLOCK_SIZE_BITS) + 1;
 
       // go on untill there is a change of status
-      if (oldChangeStatus == blockStatus)
+      if (oldStatus == blockStatus)
 	continue;
 
       // there is a change of status in block sequence, process it.
-      uint8_t oldChangeStatusSaved = oldChangeStatus;
-      oldChangeStatus = blockStatus;
-      switch (oldChangeStatusSaved) {
+      uint8_t oldStatusSaved = oldStatus;
+      oldStatus = blockStatus;
+      switch (oldStatusSaved) {
 
 	// previous blocks have free status: next block is the head of
 	// the FIFO queue.
 	case FREE_BLOCK:
 
           pPop = pBlock;
-	  if (blockStatus == NEW_BLOCK)
-	    pRead = pBlock;
-	  continue;
-
-	// previous blocks have read status: if next block has free
-	// status, it is the FIFO queue tail, otherwise next block has
-	// new status and it is the middle of the FIFO queue. 
-	case READ_BLOCK:
-
 	  pRead = pBlock;
-	  if (blockStatus == FREE_BLOCK)
-	    pPush = pBlock;
 	  continue;
- 
-	// previous blocks have new status: next block must nave a free
+
+	// previous blocks have used status: next block must nave a free
 	// status and it is the tail of the FIFO queue.
-	case NEW_BLOCK:
+	case USED_BLOCK:
 
 	  pPush = pBlock;
-	  if (blockStatus == READ_BLOCK)
-	    return INVALID_BLOCK_STATUS_CHANGE;
 	  continue;
       }
     }
@@ -312,36 +314,74 @@ struct FIFOEE {
 
     // current push block must be free
     blockHeader = EE_READ(pPush);
-    blockStatus = blockHeader & BLOCK_STATUS_BITS;
+    blockStatus = blockHeader & BLOCK_STATUS_BIT;
     if (blockStatus != FREE_BLOCK)
       return PUSH_BLOCK_NOT_FREE;
     
     //// allocate required data size. If current pPush block is smaller
     // than the requested size, merge the following free blocks until
     // the requested size + 3 is satisfied or exceeded.
-    size_t blockSize = (blockHeader & BLOCK_SIZE_BITS) + 2;
+    size_t blockSize = (blockHeader & BLOCK_SIZE_BITS) + 1;
 
-    while (size + 3 > blockSize) {
+    while (size + 1 > blockSize) {
 
       pBlock = pPush + blockSize;
 
-      if (pBlock >= pRBufEnd)
-	pBlock -= RBufSize;
+      while (pBlock >= pRBufEnd)
+	pBlock -= rBufSize;
+	
+      if (pBlock == pPush) 
+        return FIFO_FULL;
 
       blockHeader = EE_READ(pBlock);
-      blockStatus = blockHeader & BLOCK_STATUS_BITS;
+      blockStatus = blockHeader & BLOCK_STATUS_BIT;
 
       if (blockStatus != FREE_BLOCK)
         return FIFO_FULL;
 
-      blockSize += (blockHeader & BLOCK_SIZE_BITS) + 2;
+      blockSize += (blockHeader & BLOCK_SIZE_BITS) + 1;
+    }
+
+    //// manage 2 relevant cases of required block size (size + 1) vs
+    // the allowable free block size space found above (blockSize).
+
+    // case #1: required size <= free size, allocate required size and
+    // make a new free block to fill the residual space.
+    if (size + 1 < blockSize) {
+
+      pBlock = pPush + size + 1;
+
+      while (pBlock >= pRBufEnd)
+        pBlock -= rBufSize;
+
+      EE_WRITE(pBlock,FREE_BLOCK | blockSize - size - 2);
 
     }
 
+    // case #2: required size == free size, if next block is free go on.
+    // Otherwise, return FIFO full.
+    else {
+
+      pBlock = pPush + blockSize;
+
+      while (pBlock >= pRBufEnd)
+        pBlock -= rBufSize;
+
+      if (pBlock == pPush)
+        return FIFO_FULL;
+
+      blockHeader = EE_READ(pBlock);
+      blockStatus = blockHeader & BLOCK_STATUS_BIT;
+
+      if (blockStatus != FREE_BLOCK)
+        return FIFO_FULL;
+
+    }
+ 
     //// copy given data to eeprom data block
     uint8_t *pData;
 
-    // if the block is splitted ...
+    // if the block is splitted (block wraps at FIFO buffer end back to start)
     if (pPush + size + 1 > pRBufEnd) {
 
       //  copy first data part
@@ -349,7 +389,7 @@ struct FIFOEE {
         EE_WRITE(pData,*data++);
  
       //  copy second data part
-      for (pData=pRBufStart; pData < pPush + size + 1 - RBufSize;  pData++)
+      for (pData=pRBufStart; pData < pPush + size + 1 - rBufSize;  pData++)
         EE_WRITE(pData,*data++);
 
       // update offset of bottom block
@@ -357,7 +397,7 @@ struct FIFOEE {
 
     }
 
-    // if the block is not splitted ...
+    // if the block is not splitted (block does not overflow FIFO buffer end)
     else {
 
       //  copy data
@@ -367,7 +407,7 @@ struct FIFOEE {
     }
 
     // set size and status for copied data block
-    EE_WRITE(pPush,NEW_BLOCK | size - 1);
+    EE_WRITE(pPush,USED_BLOCK | size);
 
     // update push pointer to next block and bottommost block offset
     // from pRBufStart 
@@ -378,9 +418,6 @@ struct FIFOEE {
       // update offset of bottom block
       EE_WRITE(pBotBlockOffset,0);
     }
-
-    // ran out what remains of the allocated block creating a free block
-    EE_WRITE(pPush,FREE_BLOCK | blockSize - size - 3);
 
     #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitRequest();
@@ -409,7 +446,7 @@ struct FIFOEE {
       return rc;
 
     // mark block just read as deleted
-    EE_WRITE(pPop,FREE_BLOCK | *size - 1);
+    EE_WRITE(pPop,FREE_BLOCK | blockSize - 1);
 
     #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
     commitRequest();
@@ -443,13 +480,6 @@ struct FIFOEE {
     if (int rc = readData(data,size))
       return rc;
 
-    // mark block just read as read
-    EE_WRITE(pRead,READ_BLOCK | *size - 1);
-
-    #if (defined(ESP8266) || defined(ESP32)) && !defined FIFOEE_RAM
-    commitRequest();
-    #endif
-
     // update read pointer
     pRead = pBlock;
 
@@ -478,12 +508,12 @@ struct FIFOEE {
    * buffer top and what remains at buffer bottom, copy both as if they
    * were a single block. If the data buffer size is too small for data
    * block size, do not copy it and return a proper error code. Otherwise,
-   * return success (0). Also return the size of copied datai. The pBlock
+   * return success (0). Also return the size of copied data. The pBlock
    * pointer is set to point to the next block.
    */
 
     // check for sufficient data size
-    blockSize = (EE_READ(pBlock) & BLOCK_SIZE_BITS) + 2;
+    blockSize = (EE_READ(pBlock) & BLOCK_SIZE_BITS) + 1;
     if (blockSize - 1 > *size)
       return DATA_BUFFER_SMALL;
 
@@ -499,7 +529,7 @@ struct FIFOEE {
         *data++ = EE_READ(pData);
 
       // copy second data part at start of ring buffer
-      for (pData=pRBufStart; pData < pBlock + blockSize - RBufSize; pData++)
+      for (pData=pRBufStart; pData < pBlock + blockSize - rBufSize; pData++)
         *data++ = EE_READ(pData);
 
     }
@@ -559,8 +589,8 @@ struct FIFOEE {
     Serial.println((int)pRBufStart,HEX);
     Serial.print("pRBufEnd:       ");
     Serial.println((int)pRBufEnd,HEX);
-    Serial.print("RBufSize:       ");
-    Serial.println((int)RBufSize,HEX);
+    Serial.print("rBufSize:       ");
+    Serial.println((int)rBufSize,HEX);
     Serial.print("BotBlockOffset: ");
     Serial.println((int)EE_READ(pBotBlockOffset),HEX);
     Serial.print("pPush:          ");

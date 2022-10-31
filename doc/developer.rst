@@ -10,7 +10,7 @@ FIFO structure
 
 The FIFO internal structure is designed to accomodate a sequence of 
 ordered data blocks, each of one with a different data size in the
-range 1-64 byte. The sequence is realized as a forward linked list
+range 0-127 byte. The sequence is realized as a forward linked list
 of blocks and managed for insertions and deletions as a ring buffer.
 FIFOEE mantains three pointers to this list:
 
@@ -73,19 +73,20 @@ Fig. 3 show a bit breakdown of a block header.
 
   bit 7    6     5     4     3     2     1     0
   +-----+-----+-----+-----+-----+-----+-----+-----+
-  |   status  |           data size - 1           |
+  |stat |                data size                |
   +-----+-----+-----+-----+-----+-----+-----+-----+
-        |
-        |\_ 11: free block, a block available for storing data.
-        |\_ 01: new block, a block with new data, never read or popped out. 
-        |\_ 00: read block, a block read at least once and not popped out.
-         \_ 10: invalid status.
+     |
+     |\_ 1: free block, a block available for storing data.
+      \_ 0: used block, a block with new data, not popped out. 
 
-The 6 bits of the data size field allows to specify a size range from
-1 to 64 byte.
+The 7 bits of the data size field allows to specify a size range from
+0 to 127 byte.
 
 The pointer to the next block is computed as the current block header
-address plus the current block data size plus 2.
+address plus the current block data size plus 1.
+
+This pointer chains all blocks, both free and used, in a single forward
+linked list that fills completely the ring buffer of the FIFO.
 
 If the next block address goes beyond the end of the FIFO ring buffer, it is
 wrapped from the start of the ring buffer with the formula
@@ -110,7 +111,7 @@ allocation of new data blocks.
 When the **push** method is called, the push pointer points to the
 first available free block. If the size of this block is greater
 than the size of the data to be pushed, this block is splitted, the
-first part becames a new block with the new data, the residual second
+first part becomes a new block with the new data, the residual second
 part becomes a new free block. Otherwise, if the size of the free block
 is smaller than the size of the data to be pushed, the free block is
 merged with the following free block. This process is repeated until
@@ -118,7 +119,7 @@ a free block big enough is created. This new free block is splitted
 into two parts and used as explained above.
 
 The split and merge algorithm takes care to preserve at least one
-free block in the FIFO, even with a minimum size (2 byte, 1 data byte).
+free block in the FIFO, even with a minimum size (1 byte).
 This free block or a sequence of free blocks is taken as the separation
 mark between the FIFO queue head and tail.
 
@@ -126,6 +127,7 @@ mark between the FIFO queue head and tail.
 Copyright
 ---------
 
-FIFOEE is authored by Fabrizio Pollastri <mxgbot_a_t_gmail.com>, year 2021, under the GNU Lesser General Public License version 3.
+FIFOEE is authored by Fabrizio Pollastri <mxgbot_a_t_gmail.com>,
+years 2021-2022, under the GNU Lesser General Public License version 3.
 
 .. ==== END ====

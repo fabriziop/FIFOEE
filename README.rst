@@ -7,7 +7,7 @@ FIFOEE, FIFO of variable size data blocks over EEPROM.
 The FIFOEE library allow to build and use a FIFO persistent
 EEPROM storage for any kind of data on systems with small resources.
 The elements that can be stored are
-data blocks with a size in the range 1-64 byte (unsigned chars).
+data blocks with a data size in the range 0-127 byte (unsigned chars).
 The size can change dynamically from block to block.
 The data blocks can be stored into the FIFO (push method), read out
 and deleted from the FIFO (pop method) or simply read out without
@@ -33,7 +33,7 @@ Features
 ========
 
 * FIFO stores binary data blocks
-* Each block can have a variable size in the range 1-64 byte
+* Each block can have a variable data size in the range 0-127 byte
 * Allocated EEPROM range from 5 byte (minimum) to the whole available space
 * Push, pop (read and delete), read (read and keep) API interface
 * Low EEPROM data overhead: 1 byte for each data block plus one byte
@@ -62,6 +62,10 @@ arduino board (e.g. Arduino nano) using the FIFOEE library.
   // define FIFO buffer (e.g. Arduino nano, AVR 328p microprocessor)
   FIFOEE fifo((uint8_t *)BUFFER_START_ADDR,BUFFER_SIZE);
 
+  // define a data buffer and its size for push and pop
+  #define DATA_BUFFER_SIZE_MAX 16
+  uint8_t data[DATA_BUFFER_SIZE_MAX];
+  size_t dataSize;
   ...
   
 
@@ -155,41 +159,41 @@ program source and before the include of the FIFOEE library.
   ...
 
 Below there is an example of these print outs for a FIFO buffer with size
-set to 258 byte and a buffer start address set to 10 (hex), just after
+set to 258 byte and a buffer start address set to F (hex), just after
 buffer formatting.
 
 Print out of **dumpControl** method: all FIFO control constans and variables.
 ::
 
-  pRBufStart:     11
-  pRBufEnd:       112
-  RBufSize:       101
+  pRBufStart:     10
+  pRBufEnd:       111
+  rBufSize:       101
   BotBlockOffset: 0
-  pPush:          11
-  pPop:           11
-  pRead:          11
+  pPush:          10
+  pPop:           10
+  pRead:          10
 
 
 Print out of **dumpBuffer** method: the content of the FIFO ring buffer.
 ::
 
-  11: FF FF 69 AD ED FE 8A 6D 3F 3E F6 FE 2A DE 97 CF
-  21: CB DD CF 73 E7 DD F7 7D BF BB B2 BC 3F F4 F1 D5
-  31: A8 F3 3F AF EB EF BF EA 01 1A F7 FF 5E 2E F3 E7
-  41: C0 F3 EB FB 7D 0C EF DD A7 6F 37 A7 F9 B7 37 D5
-  51: FE FF A7 7E 19 ED F7 7E 0D EF EC 5F EB B1 E8 AD
-  61: 36 E7 5F F7 AD F7 EF BF 8A FB DE FF FF D7 53 F1
-  71: 3E 4E FB FB CD C6 6F 24 AD 39 7D FD 9A E3 7D F7
-  81: DF 5F CF FF BF 25 AD BB DE D7 FA D6 77 57 AF 7A
-  91: CB 6B FF D4 FA E6 38 BF 21 F3 FB 57 DE DA 2F CF
-  A1: BE F8 F6 8E E1 07 FF E7 8B ED EF ED DE EF 17 BD
-  B1: D5 F6 2B B0 ED 37 74 56 7B B5 F8 DE 35 FB FC DF
-  C1: C2 69 5A 2B BA 9D 68 E8 F7 ED C7 DD CE E5 3B CE
-  D1: AD D3 FF FC F3 F2 5F FE 6D BF 4F 67 F4 DB 87 BD
-  E1: 67 DE 5D 8A FD F4 E7 5C 39 F3 CE C7 58 DA B1 04
-  F1: 79 FC 7F BD 7D FB F4 6C 31 FF 99 56 9D DB BE F5
-  101: D7 96 DD 16 6E F7 BF B6 63 BB B4 78 FF FE EE 7E
-  111: BE
+  10: FF FF 6F 64 61 70 61 73 00 4D 6F 62 69 6C 65 57
+  20: 69 46 69 2D 34 33 38 36 31 31 00 00 00 FF 00 00
+  30: 00 FF 61 73 70 65 69 6C 75 00 30 31 32 33 00 FF
+  40: FF FF 76 6F 64 61 70 73 00 00 4D 6F 62 69 6C 65
+  50: 57 69 46 69 2D 00 FF 38 36 31 31 00 00 00 FF 00
+  60: 00 00 70 61 73 70 65 69 6C 75 00 30 31 32 33 00
+  70: FF FF F7 76 6F 64 61 70 61 73 00 4D 6F 62 69 6C
+  80: 65 FF 69 46 69 2D 34 00 FF 36 31 31 00 00 00 FF
+  90: FF FF 00 00 FF 73 00 FF FF 6C 75 00 30 31 32 33
+  A0: 00 FF FF FF 76 6F 64 61 70 61 73 00 4D 6F 62 69
+  B0: 6C FF 57 69 46 69 2D 34 33 38 36 31 31 00 00 00
+  C0: FF 00 00 00 70 61 73 70 65 69 6C 75 00 30 31 32
+  D0: 33 00 FF FF FF 56 FF 64 61 66 6F 6E 65 4D 6F 62
+  E0: 69 6C 65 57 69 46 69 2D 34 33 38 36 31 31 00 00
+  F0: 00 FF 00 00 00 00 00 63 00 35 36 37 38 39 30 31
+  100: 00 80 FF 00 FF FF FF FF FF FF FF FF FF FF FF FF
+  110: 80
 
 
 EEPROM buffer sizing
@@ -209,7 +213,7 @@ to run out the FIFO ring buffer, in the absence of pop operations.
 To determine this parameter, the formula below can be used
 ::
 
-                                         buffer_size - 3
+                                         buffer_size - 2
   storage_duration_in_hours = -----------------------------------------
                                (block_data_size + 1) * writes_per_hour
 
@@ -283,19 +287,26 @@ FIFOEE **FIFOEE** (uint8_t * **buffer**, size_t **bufSize**,
   Returns a **FIFOEE** object.
 
 
-void **format** (void);
+int **format** (void);
 
   Initialize the essential metadata of the FIFO buffer. The FIFO is initialized
   as completely empty. Format is required to be run at least one time before
   the first call to push/pop/read. Can be called to clear the whole circular
   buffer.
+ 
+  Returns the following **error** codes;
+
+    **FIFOEE::SUCCESS** : FIFO is correctly formatted.
+
+    **FIFOEE::INVALID_BUFFER_SIZE** : given FIFO buffer size too small (<5).
 
  
 int **begin** (void);
 
   Analyze the FIFO content and restore the proper status and values of the
   FIFO control variables. To be called at power up before any other FIFO
-  operation.
+  operation. *WARNING* this methods resets the read pointer, so block
+  reading restarts from the older used block.
   
   Returns the following **error** codes;
 
