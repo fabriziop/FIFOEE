@@ -231,20 +231,42 @@ A last limit to these factors is imposed by the EEPROM memory sizes that are
 1KB for Arduino nano and 4KB for NodeMCU.
 
 
-ESP8266 commit parameter
-------------------------
+ESP8266 and ESP32 commit parameter
+----------------------------------
 
-NodeMCU boards with ESP8266 microprocessor have no EEPROM. The functionality
-of such memory is emulated using the flash memory. In this process, since
-the flash memory is significantly slower than an EEPROM, the data is
-first read and written from/to a cache buffer into RAM memory and then 
-stored really into the flash memory only upon request by calling the
-**commit** method.
+NodeMCU boards with ESP8266 or ESP32 microprocessor have no EEPROM.
+The functionality of such memory is emulated using the flash memory.
+In this process, since the flash memory is significantly slower than
+an EEPROM, the data is first read and written from/to a cache buffer
+into RAM memory and then stored really into the flash memory only
+upon request by calling the **commit** method.
 
 To control the frequency of data committing into flash memory, FIFOEE allows
 to set a **commitPeriod** argument that specifies the minimum time
 period between two consecutive commits. **commitPeriod** is expressed in 
 milliseconds. A zero value disables committing.
+
+
+ESP8266 and ESP32 caveat
+========================
+
+Since ESP8266 and ESP32 processor boards simulate EEPROM using a RAM
+buffer and FLASH EPROM, they needs same sort of begin call before
+reading or writing the EEPROM. This code is embedded into the **begin**
+and **format** methods of FIFOEE. This means that one of these methods
+must be called before any other FIFOEE method.
+
+Moreover, if multiple instances of FIFOEE are used and/or if other program
+parts needs their own EEPROM buffer, an explicit EEPROM begin call must
+be put in the application before any access to the EEPROM. This must be
+done defining the symbol **EEPROM_PROGRAM_BEGIN** before any include
+involving the EEPROM and with the call
+**EEPROM.begin(<required_eeprom_size>)** in the arduino **setup**
+function.
+
+AVR processor boards have a true EEPROM, so they do not need any EEPROM
+begin and multiple instances of FIFOEE and/or other program parts using
+EEPROM do not need any special provision to coexist in the same program.
 
 
 Module reference

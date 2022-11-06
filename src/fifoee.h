@@ -16,12 +16,16 @@
 .compile_options
   1. debugging printout methods, to include them define symbol FIFOEE_DEBUG.
   2. use RAM instead of EEPROM, to activate define symbol FIFOEE_RAM.
-  Both options must be defined before including fifoee.h .
+  3. multiple instances needs explicit EEPROM begin, tell it to FIFOEE defining
+  symbol EEPROM_PROGRAM_BEGIN.
+  These options must be defined before including fifoee.h .
 
 .- */
 
 #ifndef FIFOEE_H
 #define FIFOEE_H
+
+#include "EEPROM.h"
 
 
 /**** constants ****/
@@ -159,6 +163,8 @@ struct FIFOEE {
     if (rBufSize < BUFFER_SIZE_MIN - 1)
       return INVALID_FIFO_BUFFER_SIZE;
 
+    // if required, begin EEPROM
+    #ifndef EEPROM_PROGRAM_BEGIN
     #if !defined(FIFOEE_RAM) && !defined(__AVR__)
     if (eepromBegin) {
       #if defined ESP8266
@@ -166,12 +172,13 @@ struct FIFOEE {
       #elif defined(ESP32)
       if (!EEPROM.begin((size_t)pRBufStart + rBufSize)) {
         Serial.println("ERROR: EEPROM init failure");
-        while (true) delay(1000);
+        while(true) delay(1000);
       }
       delay(500);
       #endif
       eepromBegin = false;
     }
+    #endif
     #endif
 
     // clear the offset of bottommost block
@@ -207,12 +214,16 @@ struct FIFOEE {
   }
 
 
+  // class initializer
   int begin(void) {
-  /* Scan the ring buffer for a valid data structure. If yes,
+  /* Class instance init
+   * Scan the ring buffer for a valid data structure. If yes,
    * gather all relevant data for its management. If not,
    * return an error code.
    */
 
+    // if required, begin EEPROM
+    #ifndef EEPROM_PROGRAM_BEGIN
     #if !defined(FIFOEE_RAM) && !defined(__AVR__)
     if (eepromBegin) {
       #if defined ESP8266
@@ -220,12 +231,13 @@ struct FIFOEE {
       #elif defined(ESP32)
       if (!EEPROM.begin((size_t)pRBufStart + rBufSize)) {
         Serial.println("ERROR: EEPROM init failure");
-        while (true) delay(1000);
+        while(true) delay(1000);
       }
       delay(500);
       #endif
       eepromBegin = false;
     }
+    #endif
     #endif
 
     // scan the blocks sequence in the ring buffer for changes of status
