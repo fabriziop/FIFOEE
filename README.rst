@@ -39,15 +39,14 @@ Features
 * Low EEPROM data overhead: 1 byte for each data block plus one byte
 * Designed to minimize EEPROM wearing
 * Works also with RAM with the same API
-* Supports AVR328p, ESP8266, ESP32 processors.
-* Tested on arduino nano, nodeMCU 8266, nodeMCU 32S boards.
+* Supports AVR328p, ESP8266, ESP32, RISC-V processors.
+* Tested on arduino nano, nodeMCU 8266, nodeMCU 32S, ESP32-C3 boards.
 
 
 Quick start
 ===========
 
-Here is a skeletal structure of an application for an AVR 328p
-arduino board (e.g. Arduino nano) using the FIFOEE library.
+Here is a skeletal structure of an application using the FIFOEE library.
 
 .. code:: cpp
 
@@ -59,7 +58,7 @@ arduino board (e.g. Arduino nano) using the FIFOEE library.
   #define BUFFER_START 0x4      // buffer start address
   #define BUFFER_SIZE 128       // buffer size
 
-  // define FIFO buffer (e.g. Arduino nano, AVR 328p microprocessor)
+  // define FIFO buffer
   FIFOEE fifo((uint8_t *)BUFFER_START_ADDR,BUFFER_SIZE);
 
   // define a data buffer and its size for push and pop
@@ -109,8 +108,8 @@ arduino board (e.g. Arduino nano) using the FIFOEE library.
 Examples
 ========
  
-Two example programs are provided with this library. All of them are tested
-on both Arduino nano and NodeMCU (ESP8266) boards.
+Three example programs are provided with this library. All of them are tested
+on both Arduino nano, NodeMCU ESP8266 and ESP32 and ESP32-C3 boards.
 
 The "testRingBuffer" example is a deep test for the consistence of the FIFO
 internal structure. Since it makes many write cycles, it runs in RAM mode
@@ -231,10 +230,11 @@ A last limit to these factors is imposed by the EEPROM memory sizes that are
 1KB for Arduino nano and 4KB for NodeMCU.
 
 
-ESP8266 and ESP32 commit parameter
-----------------------------------
+ESP8266, ESP32 and RISC-V commit parameter
+------------------------------------------
 
-NodeMCU boards with ESP8266 or ESP32 microprocessor have no EEPROM.
+NodeMCU boards with ESP8266 or ESP32 and ESP32-C3 boards with RISC-V
+microprocessor have no EEPROM.
 The functionality of such memory is emulated using the flash memory.
 In this process, since the flash memory is significantly slower than
 an EEPROM, the data is first read and written from/to a cache buffer
@@ -247,10 +247,10 @@ period between two consecutive commits. **commitPeriod** is expressed in
 milliseconds. A zero value disables committing.
 
 
-ESP8266 and ESP32 caveat
-========================
+ESP8266, ESP32 and RISC-V caveat
+================================
 
-Since ESP8266 and ESP32 processor boards simulate EEPROM using a RAM
+Since ESP8266, ESP32 and RISC-V processor boards simulate EEPROM using a RAM
 buffer and FLASH EPROM, they needs same sort of begin call before
 reading or writing the EEPROM. This code is embedded into the **begin**
 and **format** methods of FIFOEE. This means that one of these methods
@@ -299,7 +299,7 @@ FIFOEE **FIFOEE** (uint8_t * **buffer**, size_t **bufSize**);
 FIFOEE **FIFOEE** (uint8_t * **buffer**, size_t **bufSize**,
   uint32_t **commitPeriod**);
 
-  The class constructor for ESP8266 microprocessor boards.
+  The class constructor for ESP8266, ESP32 and RISC-V microprocessor boards.
 
   **buffer** and **bufSize**: the same as above.
 
@@ -423,7 +423,7 @@ Copyright
 =========
 
 FIFOEE library is authored by Fabrizio Pollastri <mxgbot_a_t_gmail.com>,
-years 2021-2022, under the GNU Lesser General Public License version 3.
+years 2021-2023, under the GNU Lesser General Public License version 3.
 
 
 .. _DEVINFO: doc/developer.rst
