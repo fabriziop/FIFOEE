@@ -211,6 +211,8 @@ struct FIFOEE {
     nextCommit = millis() + commitPeriod;
     #endif
 
+    return SUCCESS;
+
   }
 
 
